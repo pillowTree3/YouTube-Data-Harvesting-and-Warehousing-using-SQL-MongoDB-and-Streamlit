@@ -367,21 +367,34 @@ if selected == "View":
         st.write(df)
         
     elif questions == '9. What is the average duration of all videos in each channel, and what are their corresponding channel names?':
-        mycursor.execute("""SELECT channel_name AS Channel_Name,
-                            AVG(duration)/60 AS "Average_Video_Duration (mins)"
-                            FROM videos
-                            GROUP BY channel_name
-                            ORDER BY AVG(duration)/60 DESC""")
-        df = pd.DataFrame(mycursor.fetchall(),columns=mycursor.column_names)
+        mycursor.execute("""SELECT channel_name, 
+                        SUM(duration_sec) / COUNT(*) AS average_duration
+                        FROM (
+                            SELECT channel_name, 
+                            CASE
+                                WHEN duration REGEXP '^PT[0-9]+H[0-9]+M[0-9]+S$' THEN 
+                                TIME_TO_SEC(CONCAT(
+                                SUBSTRING_INDEX(SUBSTRING_INDEX(duration, 'H', 1), 'T', -1), ':',
+                            SUBSTRING_INDEX(SUBSTRING_INDEX(duration, 'M', 1), 'H', -1), ':',
+                            SUBSTRING_INDEX(SUBSTRING_INDEX(duration, 'S', 1), 'M', -1)
+                            ))
+                                WHEN duration REGEXP '^PT[0-9]+M[0-9]+S$' THEN 
+                                TIME_TO_SEC(CONCAT(
+                                '0:', SUBSTRING_INDEX(SUBSTRING_INDEX(duration, 'M', 1), 'T', -1), ':',
+                                SUBSTRING_INDEX(SUBSTRING_INDEX(duration, 'S', 1), 'M', -1)
+                            ))
+                                WHEN duration REGEXP '^PT[0-9]+S$' THEN 
+                                TIME_TO_SEC(CONCAT('0:0:', SUBSTRING_INDEX(SUBSTRING_INDEX(duration, 'S', 1), 'T', -1)))
+                                END AS duration_sec
+                        FROM videos
+                        ) AS subquery
+                        GROUP BY channel_name""")
+        df = pd.DataFrame(mycursor.fetchall(),columns=mycursor.column_names
+                          )
         st.write(df)
-        st.write("### :green[Avg video duration for channels :]")
-        fig = px.bar(df,
-                     x=mycursor.column_names[0],
-                     y=mycursor.column_names[1],
-                     orientation='v',
-                     color=mycursor.column_names[0]
-                    )
-        st.plotly_chart(fig,use_container_width=True)
+        st.write("### :green[Average video duration for channels :]")
+        
+
         
     elif questions == '10. Which videos have the highest number of comments, and what are their corresponding channel names?':
         mycursor.execute("""SELECT channel_name AS Channel_Name,video_id AS Video_ID,comments AS Comments
